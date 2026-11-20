@@ -1,3 +1,4 @@
+
 package domesticcup.controller;
 
 import domesticcup.dto.request.CreateParticipantRequest;
@@ -8,20 +9,21 @@ import domesticcup.exeption.DeleteParticipantException;
 import domesticcup.exeption.UpdateParticipantException;
 import domesticcup.service.IParticipantService;
 import lombok.RequiredArgsConstructor;
-import lombok.var;
-
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 @RequiredArgsConstructor
-@Controller
+@RestController
 @RequestMapping("/participant")
 public class ParticipantController {
 
-    private final IParticipantService iParticipantService;
-
+    private final IParticipantService participantService;
 
     @GetMapping("")
     ResponseEntity<GetAllParticipantResponse> getAll() {
+
         var participantList = participantService.getAll();
+
         var response = GetAllParticipantResponse.builder()
                 .participant(participantList)
                 .build();
@@ -33,9 +35,8 @@ public class ParticipantController {
     ResponseEntity<GetParticipantByIdResponse> getById(
             @PathVariable("participantId") Long participantId) {
 
-        //var getEventByIdResponseBuilder = GetParticipantByIdResponse.builder();
+        var participant = participantService.getById(participantId);
 
-        var participant = iParticipantService.getById(participantId);
         var response = GetParticipantByIdResponse.builder()
                 .participant(participant)
                 .build();
@@ -43,72 +44,107 @@ public class ParticipantController {
         return ResponseEntity.ok(response);
     }
 
-        @PostMapping("")
-        ResponseEntity<CreateParticipantResponse> create (CreateParticipantException createParticipantRequest){
-            var response = CreateParticipantResponse.builder();
+    @PostMapping("")
+    ResponseEntity<CreateParticipantResponse> create(
+            @RequestBody CreateParticipantRequest createParticipantRequest) {
 
-            try {
-                if (CreateParticipantRequest.getName() == null) {
-                    throw new CreateParticipantException("Participant name is required");
-                }
+        var response = CreateParticipantResponse.builder();
 
-                if (CreateParticipantRequest.getActive() == null) {
-                    throw new CreateParticipantException("Participant activity is required.");
-                }
+        try {
 
-                participantService.create(createParticipantRequest);
-
-                return ResponseEntity
-                        .status(201)
-                        .body(
-                                response.mensagem("Participant created successfully.").build()
-                        );
-            } catch (CreateParticipantException createParticipantException) {
-                return ResponseEntity.badRequest().body(
-                        response.mensagem(createParticipantException.getMessage()).build());
-            } catch (Exception exception) {
-                return ParticipantEntity.internalServerError().body(
-                        response.mensagem("Error creating participant").build());
+            if (createParticipantRequest.getParticipantName() == null ||
+                    createParticipantRequest.getParticipantName().isBlank()) {
+                throw new CreateParticipantException(
+                        "Participant name is required"
+                );
             }
-        }
 
-        @PatchMapping("/{participantId}")
-        ResponseEntity<UpdateParticipantResponse> update (
-                @PathVariable("participantId") Long participantId, UpdateParticipantRequest updateParticipantRequest){
-            var response = UpdateParticipantResponse.builder();
-            try {
-                participantService.update(participantId, updateParticipantRequest);
-
-                return ResponseEntity
-                        .status(200)
-                        .body(
-                                response.mensagem("PParticipant successfully updated").build());
-            } catch (UpdateParticipantException updateParticipantException) {
-                return ResponseEntity.badRequest().body(
-                        response.mensagem(updateParticipantException.getMessage()).build());
-            } catch (Exception exception) {
-                return ResponseEntity.internalServerError().body(
-                        response.mensagem("Error updating the participant!").build());
+            if (createParticipantRequest.getActive() == null) {
+                throw new CreateParticipantException(
+                        "Participant activity is required"
+                );
             }
+
+            participantService.create(createParticipantRequest);
+
+            return ResponseEntity
+                    .status(201)
+                    .body(response.mensagem(
+                            "Participant created successfully"
+                    ).build());
+
+        } catch (CreateParticipantException exception) {
+
+            return ResponseEntity.badRequest().body(
+                    response.mensagem(exception.getMessage()).build()
+            );
+
+        } catch (Exception exception) {
+
+            return ResponseEntity.internalServerError().body(
+                    response.mensagem("Error creating participant").build()
+            );
         }
-
-        @DeleteMapping("/{participantId}")
-        ResponseEntity<DeleteParticipantResponse> delete (@PathVariable("participantId") Long participantId){
-            var response = DeleteParticipantResponse.builder();
-            try {
-                participantService.delete(participantId);
-
-                return ResponseEntity
-                        .status(200)
-                        .body(
-                                response.mensagem("Event successfully deleted").build());
-            } catch (DeleteParticipantException deleteParticipantException) {
-                return ResponseEntity.badRequest().body(
-                        response.mensagem(deleteParticipantException.getMessage()).build());
-            } catch (Exception exception) {
-                return ResponseEntity.internalServerError().body(
-                        response.mensagem("Error deleting the event!").build());
-            }
-        }
-
     }
+
+    @PatchMapping("/{participantId}")
+    ResponseEntity<UpdateParticipantResponse> update(
+            @PathVariable("participantId") Long participantId,
+            @RequestBody UpdateParticipantRequest updateParticipantRequest) {
+
+        var response = UpdateParticipantResponse.builder();
+
+        try {
+
+            participantService.update(participantId, updateParticipantRequest);
+
+            return ResponseEntity
+                    .status(200)
+                    .body(response.mensagem(
+                            "Participant updated successfully"
+                    ).build());
+
+        } catch (UpdateParticipantException updateParticipantException) {
+
+            return ResponseEntity.badRequest().body(
+                    response.mensagem(updateParticipantException.getMessage()).build()
+            );
+
+        } catch (Exception exception) {
+
+            return ResponseEntity.internalServerError().body(
+                    response.mensagem("Error updating participant").build()
+            );
+        }
+    }
+
+    @DeleteMapping("/{participantId}")
+    ResponseEntity<DeleteParticipantResponse> delete(
+            @PathVariable("participantId") Long participantId) {
+
+        var response = DeleteParticipantResponse.builder();
+
+        try {
+
+            participantService.delete(participantId);
+
+            return ResponseEntity
+                    .status(200)
+                    .body(response.mensagem(
+                            "Participant deleted successfully"
+                    ).build());
+
+        } catch (DeleteParticipantException exception) {
+
+            return ResponseEntity.badRequest().body(
+                    response.mensagem(exception.getMessage()).build()
+            );
+
+        } catch (Exception exception) {
+
+            return ResponseEntity.internalServerError().body(
+                    response.mensagem("Error deleting participant").build()
+            );
+        }
+    }
+}

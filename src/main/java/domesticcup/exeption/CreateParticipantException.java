@@ -1,4 +1,14 @@
+
 package domesticcup.exeption;
 
-public class CreateParticipantException {
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@AllArgsConstructor
+@NoArgsConstructor
+@Getter
+public class CreateParticipantException extends RuntimeException {
+
+    private String message;
 }

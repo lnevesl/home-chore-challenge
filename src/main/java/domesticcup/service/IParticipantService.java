@@ -10,6 +10,7 @@ public interface IParticipantService {
     //Represents a person who participates in the challenge.
 
     List<ParticipantDto> getAll();
+
     ParticipantDto getById(long ParticipantId);
 
     void create(CreateParticipantRequest createParticipantRequest);
