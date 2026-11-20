@@ -1,0 +1,503 @@
+# HomeChore Challenge - Project Specification
+
+**Language:** English \|
+[Português](#homechore-challenge---especificação-do-projeto)
+
+## English
+
+## 1. Overview
+
+HomeChore Challenge is a REST API designed to manage household chores
+and a weekly competition between participants. Participants earn points
+by completing chores during a defined weekly period. At the end of the
+period, the participant with the highest score wins.
+
+The system must maintain the history of completed chores and ensure that
+competition results are calculated consistently.
+
+## 2. Entities
+
+The system will have five main entities.
+
+### 2.1. Chore
+
+Represents a household chore that can be completed by a participant.
+
+Suggested attributes:
+
+-   `id`: generated identifier.
+-   `name`: required chore name.
+-   `description`: optional description.
+-   `active`: indicates whether the chore is available for new
+    completion records.
+-   `points`: number of points awarded for completing the chore. The
+    initial default is 1, and the value must be configurable.
+
+Rules:
+
+-   Only active chores can be used for new completion records.
+-   Deactivating a chore must not delete its completion history.
+-   The points awarded for a completion must be stored in the completion
+    record. This preserves historical scoring if the chore's configured
+    points change later.
+
+### 2.2. Participant
+
+Represents a person taking part in the competition.
+
+Suggested attributes:
+
+-   `id`: generated identifier.
+-   `name`: required participant name.
+-   `active`: indicates whether the participant can take part in new
+    completion records.
+-   Completion history: represented through the relationship with
+    `ChoreCompletion`.
+
+Rules:
+
+-   Only active participants can register new chore completions.
+-   Existing history must remain available if a participant is later
+    deactivated.
+
+### 2.3. Competition
+
+Represents a weekly competition period.
+
+Suggested attributes:
+
+-   `id`: generated identifier.
+-   `startDate`: Sunday, the first day of the competition.
+-   `endDate`: Saturday, the last day of the competition.
+-   `penaltyDescription`: description of the penalty or responsibility
+    selected by the winner for the loser.
+-   `status`: competition status, such as in progress or completed.
+
+Rules:
+
+-   The period always starts on Sunday and ends on Saturday.
+-   The competition is finalized on the following Sunday.
+-   Chore completions are accepted only while the competition is in
+    progress and only when their completion date falls within the
+    competition period, including both the start and end dates.
+-   Overlapping active competition periods must not be allowed.
+-   Once finalized, the competition must reject new completion records.
+
+### 2.4. ChoreCompletion
+
+Represents a chore completed by a participant during a specific
+competition.
+
+Suggested attributes:
+
+-   `id`: generated identifier.
+-   `participant`: reference to the participant who completed the chore
+    (`ManyToOne`).
+-   `chore`: reference to the completed chore (`ManyToOne`).
+-   `competition`: reference to the competition (`ManyToOne`).
+-   `completedAt`: date and time when the chore was completed.
+-   `pointsEarned`: points awarded for this completion, copied from the
+    chore's configured points at registration time.
+
+Rules:
+
+-   The participant must be active.
+-   The chore must be active.
+-   The competition must be in progress.
+-   The completion date must fall within the competition's
+    Sunday-to-Saturday period.
+-   The completion must be associated with the correct competition.
+-   The same chore may be recorded multiple times in the same week,
+    including on the same day, when it was genuinely performed each
+    time.
+-   Each completion must award points exactly once.
+-   The points earned must be stored in the completion record to
+    preserve historical scoring.
+
+### 2.5. CompetitionResult
+
+Represents the final result of a competition.
+
+Suggested attributes:
+
+-   `id`: generated identifier.
+-   `competition`: reference to the competition. There can be at most
+    one result for each competition.
+-   `winner`: reference to the winning participant; nullable in case of
+    a tie.
+-   `loser`: reference to the losing participant; nullable in case of a
+    tie.
+-   `winnerScore`: winner's final score, when applicable.
+-   `loserScore`: loser's final score, when applicable.
+-   `outcome`: result type, such as win or tie.
+-   `finalizedAt`: date and time when the result was finalized.
+
+Rules:
+
+-   The participant with the higher score wins.
+-   If both participants have the same score, the result is a tie.
+-   In a tie, there is no winner or loser.
+-   The database must ensure that no more than one result is created for
+    the same competition.
+
+## 3. Relationships
+
+The main relationships are:
+
+-   `Participant` 1:N `ChoreCompletion`
+-   `Chore` 1:N `ChoreCompletion`
+-   `Competition` 1:N `ChoreCompletion`
+-   `Competition` 1:0..1 `CompetitionResult`
+
+A participant, a chore, and a competition can each be associated with
+multiple completion records. A competition can have zero or one final
+result.
+
+## 4. Business Rules
+
+### 4.1. Scoring
+
+-   Each valid chore completion awards the number of points configured
+    for that chore.
+-   The initial default value is 1 point.
+-   The points value must be configurable.
+-   The awarded points are stored in `ChoreCompletion.pointsEarned`.
+-   A completion must never be counted more than once.
+
+### 4.2. Weekly period
+
+-   The competition starts on Sunday.
+-   The competition ends on Saturday.
+-   Both dates are included in the valid completion period.
+-   Finalization takes place on the following Sunday.
+
+### 4.3. Finalization
+
+When a competition is finalized:
+
+1.  The system calculates each participant's total points from the valid
+    completion records belonging to that competition.
+2.  The system compares the participants' scores.
+3.  The system determines the winner, loser, or tie.
+4.  The system creates the `CompetitionResult`.
+5.  The system changes the competition status to completed.
+6.  The system prevents any further completion records for that
+    competition.
+
+These operations must run in a single transaction. If any step fails,
+the entire finalization must be rolled back.
+
+### 4.4. Data integrity
+
+-   A completion must reference an existing participant, chore, and
+    competition.
+-   A completion must belong to the competition whose date range
+    contains its completion date.
+-   Inactive participants and inactive chores cannot be used for new
+    completion records.
+-   Completed competitions cannot receive new completion records.
+-   A competition cannot have more than one result.
+-   Historical completion records must be preserved when a chore or
+    participant is deactivated.
+
+### 4.5. Chore deactivation
+
+Chores should be deactivated instead of physically deleted when they
+have historical completion records. This keeps previous competition
+results and activity history consistent.
+
+## 5. Main Workflow
+
+1.  Create the participants.
+2.  Register the household chores and configure their point values.
+3.  Create a weekly competition with a Sunday start date and Saturday
+    end date.
+4.  During the week, register each chore completion with its
+    participant, chore, competition, completion date, and points earned.
+5.  On the following Sunday, finalize the competition.
+6.  Calculate the participants' scores and determine the winner, loser,
+    or tie.
+7.  Save the final result and mark the competition as completed.
+8.  Keep the completion and result history available for later
+    consultation.
+
+## 6. Decisions to Confirm
+
+The following implementation details should be confirmed during
+development:
+
+-   The exact enum values for competition status and result outcome.
+-   Whether `penaltyDescription` is stored only in `Competition` or also
+    copied to `CompetitionResult` as a historical snapshot.
+-   Whether weekly competition creation and Sunday finalization will be
+    automated or triggered manually.
+-   The exact policy for creating the next weekly competition.
+-   Whether score values and participant totals should be exposed
+    through dedicated response DTOs.
+
+## 7. Scope and Project Status
+
+This specification describes the intended behavior and domain model of
+HomeChore Challenge. The project is under development, and some
+entities, validations, endpoints, and workflows may still need to be
+implemented.
+
+The specification should be updated as implementation decisions are
+made.
+
+------------------------------------------------------------------------
+
+## HomeChore Challenge - Especificação do Projeto
+
+## 1. Visão geral
+
+HomeChore Challenge é uma API REST projetada para gerenciar tarefas
+domésticas e uma competição semanal entre participantes. Os
+participantes acumulam pontos ao concluir tarefas durante um período
+semanal definido. Ao final do período, vence o participante com a maior
+pontuação.
+
+O sistema deve manter o histórico das tarefas concluídas e garantir que
+os resultados da competição sejam calculados de maneira consistente.
+
+## 2. Entidades
+
+O sistema terá cinco entidades principais.
+
+### 2.1. Chore (Tarefa)
+
+Representa uma tarefa doméstica que pode ser realizada por um
+participante.
+
+Atributos sugeridos:
+
+-   `id`: identificador gerado.
+-   `name`: nome obrigatório da tarefa.
+-   `description`: descrição opcional.
+-   `active`: indica se a tarefa está disponível para novos registros de
+    conclusão.
+-   `points`: quantidade de pontos concedida pela conclusão da tarefa. O
+    valor inicial padrão é 1 e deve ser configurável.
+
+Regras:
+
+-   Somente tarefas ativas podem ser utilizadas em novos registros de
+    conclusão.
+-   Desativar uma tarefa não deve excluir seu histórico de conclusões.
+-   A pontuação concedida por uma conclusão deve ser armazenada no
+    registro da conclusão. Isso preserva a pontuação histórica caso os
+    pontos configurados para a tarefa sejam alterados posteriormente.
+
+### 2.2. Participant (Participante)
+
+Representa uma pessoa que participa da competição.
+
+Atributos sugeridos:
+
+-   `id`: identificador gerado.
+-   `name`: nome obrigatório do participante.
+-   `active`: indica se o participante pode participar de novos
+    registros de conclusão.
+-   Histórico de conclusões: representado pelo relacionamento com
+    `ChoreCompletion`.
+
+Regras:
+
+-   Somente participantes ativos podem registrar novas conclusões de
+    tarefas.
+-   O histórico existente deve continuar disponível caso um participante
+    seja desativado posteriormente.
+
+### 2.3. Competition (Competição)
+
+Representa o período de uma competição semanal.
+
+Atributos sugeridos:
+
+-   `id`: identificador gerado.
+-   `startDate`: domingo, primeiro dia da competição.
+-   `endDate`: sábado, último dia da competição.
+-   `penaltyDescription`: descrição da penalidade ou responsabilidade
+    escolhida pelo vencedor para o perdedor.
+-   `status`: status da competição, como em andamento ou concluída.
+
+Regras:
+
+-   O período sempre começa no domingo e termina no sábado.
+-   A competição é finalizada no domingo seguinte.
+-   As conclusões de tarefas só são aceitas enquanto a competição
+    estiver em andamento e somente quando a data da conclusão estiver
+    dentro do período da competição, incluindo as datas inicial e final.
+-   Não deve ser permitido que períodos de competições ativas se
+    sobreponham.
+-   Depois de finalizada, a competição deve rejeitar novos registros de
+    conclusão.
+
+### 2.4. ChoreCompletion (Conclusão de Tarefa)
+
+Representa uma tarefa realizada por um participante durante uma
+competição específica.
+
+Atributos sugeridos:
+
+-   `id`: identificador gerado.
+-   `participant`: referência ao participante que realizou a tarefa
+    (`ManyToOne`).
+-   `chore`: referência à tarefa concluída (`ManyToOne`).
+-   `competition`: referência à competição (`ManyToOne`).
+-   `completedAt`: data e hora em que a tarefa foi concluída.
+-   `pointsEarned`: pontos concedidos por essa conclusão, copiados da
+    pontuação configurada na tarefa no momento do registro.
+
+Regras:
+
+-   O participante deve estar ativo.
+-   A tarefa deve estar ativa.
+-   A competição deve estar em andamento.
+-   A data da conclusão deve estar dentro do período de domingo a sábado
+    da competição.
+-   A conclusão deve estar associada à competição correta.
+-   A mesma tarefa pode ser registrada várias vezes na mesma semana,
+    inclusive no mesmo dia, quando tiver sido realmente executada em
+    cada ocasião.
+-   Cada conclusão deve conceder pontos exatamente uma vez.
+-   Os pontos obtidos devem ser armazenados no registro da conclusão
+    para preservar a pontuação histórica.
+
+### 2.5. CompetitionResult (Resultado da Competição)
+
+Representa o resultado final de uma competição.
+
+Atributos sugeridos:
+
+-   `id`: identificador gerado.
+-   `competition`: referência à competição. Pode existir, no máximo, um
+    resultado para cada competição.
+-   `winner`: referência ao participante vencedor; pode ser nula em caso
+    de empate.
+-   `loser`: referência ao participante perdedor; pode ser nula em caso
+    de empate.
+-   `winnerScore`: pontuação final do vencedor, quando aplicável.
+-   `loserScore`: pontuação final do perdedor, quando aplicável.
+-   `outcome`: tipo de resultado, como vitória ou empate.
+-   `finalizedAt`: data e hora em que o resultado foi finalizado.
+
+Regras:
+
+-   O participante com a maior pontuação vence.
+-   Se os dois participantes tiverem a mesma pontuação, o resultado será
+    empate.
+-   Em caso de empate, não haverá vencedor nem perdedor.
+-   O banco de dados deve garantir que não seja criado mais de um
+    resultado para a mesma competição.
+
+## 3. Relacionamentos
+
+Os principais relacionamentos são:
+
+-   `Participant` 1:N `ChoreCompletion`
+-   `Chore` 1:N `ChoreCompletion`
+-   `Competition` 1:N `ChoreCompletion`
+-   `Competition` 1:0..1 `CompetitionResult`
+
+Um participante, uma tarefa e uma competição podem estar associados a
+vários registros de conclusão. Uma competição pode ter zero ou um
+resultado final.
+
+## 4. Regras de negócio
+
+### 4.1. Pontuação
+
+-   Cada conclusão válida de tarefa concede a quantidade de pontos
+    configurada para aquela tarefa.
+-   O valor padrão inicial é de 1 ponto.
+-   A pontuação deve ser configurável.
+-   Os pontos concedidos são armazenados em
+    `ChoreCompletion.pointsEarned`.
+-   Uma conclusão nunca deve ser contabilizada mais de uma vez.
+
+### 4.2. Período semanal
+
+-   A competição começa no domingo.
+-   A competição termina no sábado.
+-   As duas datas estão incluídas no período válido para conclusões.
+-   A finalização acontece no domingo seguinte.
+
+### 4.3. Finalização
+
+Quando uma competição for finalizada:
+
+1.  O sistema calcula o total de pontos de cada participante a partir
+    dos registros válidos de conclusão pertencentes àquela competição.
+2.  O sistema compara as pontuações dos participantes.
+3.  O sistema determina o vencedor, o perdedor ou o empate.
+4.  O sistema cria o `CompetitionResult`.
+5.  O sistema altera o status da competição para concluída.
+6.  O sistema impede novos registros de conclusão para aquela
+    competição.
+
+Essas operações devem ser executadas em uma única transação. Se qualquer
+etapa falhar, toda a finalização deverá ser revertida.
+
+### 4.4. Integridade dos dados
+
+-   Uma conclusão deve referenciar um participante, uma tarefa e uma
+    competição existentes.
+-   Uma conclusão deve pertencer à competição cujo período contém a data
+    de sua realização.
+-   Participantes inativos e tarefas inativas não podem ser utilizados
+    em novos registros de conclusão.
+-   Competições concluídas não podem receber novos registros de
+    conclusão.
+-   Uma competição não pode ter mais de um resultado.
+-   Os registros históricos de conclusão devem ser preservados quando
+    uma tarefa ou um participante for desativado.
+
+### 4.5. Desativação de tarefas
+
+As tarefas devem ser desativadas, em vez de excluídas fisicamente,
+quando possuírem registros históricos de conclusão. Isso mantém
+consistentes os resultados de competições anteriores e o histórico de
+atividades.
+
+## 5. Fluxo principal
+
+1.  Cadastrar os participantes.
+2.  Cadastrar as tarefas domésticas e configurar seus valores de
+    pontuação.
+3.  Criar uma competição semanal com data inicial no domingo e data
+    final no sábado.
+4.  Durante a semana, registrar cada conclusão de tarefa com seu
+    participante, tarefa, competição, data de conclusão e pontos
+    obtidos.
+5.  No domingo seguinte, finalizar a competição.
+6.  Calcular as pontuações dos participantes e determinar o vencedor, o
+    perdedor ou o empate.
+7.  Salvar o resultado final e marcar a competição como concluída.
+8.  Manter o histórico de conclusões e resultados disponível para
+    consultas futuras.
+
+## 6. Decisões a confirmar
+
+Os seguintes detalhes de implementação devem ser confirmados durante o
+desenvolvimento:
+
+-   Os valores exatos dos enums para o status da competição e o tipo de
+    resultado.
+-   Se `penaltyDescription` será armazenado somente em `Competition` ou
+    também copiado para `CompetitionResult` como um registro histórico.
+-   Se a criação das competições semanais e a finalização aos domingos
+    serão automatizadas ou acionadas manualmente.
+-   A política exata para criar a próxima competição semanal.
+-   Se as pontuações e os totais dos participantes serão
+    disponibilizados por meio de DTOs de resposta específicos.
+
+## 7. Escopo e status do projeto
+
+Esta especificação descreve o comportamento esperado e o modelo de
+domínio do HomeChore Challenge. O projeto está em desenvolvimento, e
+algumas entidades, validações, endpoints e fluxos ainda podem precisar
+ser implementados.
+
+A especificação deverá ser atualizada conforme as decisões de
+implementação forem tomadas.
